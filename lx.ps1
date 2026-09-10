@@ -1,15 +1,18 @@
-# ============================================================
-#                  REDX CLEANER v2.0
-#                     BY LUXREST
-# ============================================================
+# ============================================
+#              REDX CLEANER FINAL
+#                  By LuxRest
+# ============================================
 
 $ErrorActionPreference = "SilentlyContinue"
 
-$Version = "2.0"
-$ProcessName = "RedXGameLibrary"
-$SteamProcessName = "steam"
+# -----------------------------
+# AYARLAR
+# -----------------------------
 
-$Targets = @(
+$processName = "RedXGameLibrary"
+$redxPath = ""
+
+$targets = @(
     "xinput1_4.dll",
     "version.dll",
     "appcache",
@@ -17,29 +20,17 @@ $Targets = @(
     "dwmapi.dll"
 )
 
-$StartTime = Get-Date
-
-# ============================================================
-# RENKLER / UI
-# ============================================================
-
-$Host.UI.RawUI.WindowTitle = "REDX CLEANER v$Version | By LuxRest"
+$Host.UI.RawUI.WindowTitle = "REDX CLEANER | By LuxRest"
 
 try {
-    $Host.UI.RawUI.ForegroundColor = "White"
-}
-catch {}
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+} catch {}
 
 Clear-Host
 
-function Write-Line {
-    param(
-        [string]$Text = "",
-        [ConsoleColor]$Color = "White"
-    )
-
-    Write-Host $Text -ForegroundColor $Color
-}
+# -----------------------------
+# RENKLER
+# -----------------------------
 
 function Write-Center {
     param(
@@ -47,95 +38,120 @@ function Write-Center {
         [ConsoleColor]$Color = "White"
     )
 
-    try {
-        $Width = $Host.UI.RawUI.WindowSize.Width
-        $Left = [Math]::Max(0, [int](($Width - $Text.Length) / 2))
-    }
-    catch {
-        $Left = 2
-    }
+    $width = $Host.UI.RawUI.WindowSize.Width
 
-    Write-Host ((" " * $Left) + $Text) -ForegroundColor $Color
+    if ($Text.Length -lt $width) {
+        $left = [Math]::Max(0, [int](($width - $Text.Length) / 2))
+        Write-Host (" " * $left + $Text) -ForegroundColor $Color
+    }
+    else {
+        Write-Host $Text -ForegroundColor $Color
+    }
 }
 
-function Status {
-    param(
-        [string]$Icon,
-        [string]$Text,
-        [ConsoleColor]$Color = "White"
-    )
+# -----------------------------
+# LOADING
+# -----------------------------
 
-    Write-Host "  [" -NoNewline -ForegroundColor DarkGray
-    Write-Host $Icon -NoNewline -ForegroundColor $Color
-    Write-Host "] " -NoNewline -ForegroundColor DarkGray
-    Write-Host $Text -ForegroundColor White
-}
-
-function Loading {
+function Show-Loading {
     param(
         [string]$Text,
         [int]$Seconds = 1
     )
 
-    $Frames = @("|", "/", "-", "\")
-    $End = (Get-Date).AddSeconds($Seconds)
-    $Index = 0
+    $frames = @(
+        "[•] ",
+        "[••] ",
+        "[•••] ",
+        "[••] "
+    )
 
-    while ((Get-Date) -lt $End) {
+    $end = (Get-Date).AddSeconds($Seconds)
+    $i = 0
 
-        $Frame = $Frames[$Index % $Frames.Count]
-
-        Write-Host "`r  [$Frame] $Text   " `
-            -NoNewline `
-            -ForegroundColor Cyan
-
-        Start-Sleep -Milliseconds 110
-
-        $Index++
+    while ((Get-Date) -lt $end) {
+        Write-Host "`r$($frames[$i % $frames.Count])$Text   " -NoNewline -ForegroundColor Cyan
+        Start-Sleep -Milliseconds 180
+        $i++
     }
 
-    Write-Host "`r  [✓] $Text                         " `
-        -ForegroundColor Green
+    Write-Host "`r[✓] $Text" -ForegroundColor Green
 }
 
-function Get-ItemSize {
+# -----------------------------
+# DURUM
+# -----------------------------
+
+function Write-Status {
+    param(
+        [string]$Text,
+        [string]$Type = "INFO"
+    )
+
+    switch ($Type) {
+        "OK" {
+            Write-Host "[✓] $Text" -ForegroundColor Green
+        }
+
+        "WARN" {
+            Write-Host "[!] $Text" -ForegroundColor Yellow
+        }
+
+        "ERROR" {
+            Write-Host "[✗] $Text" -ForegroundColor Red
+        }
+
+        "SKIP" {
+            Write-Host "[→] $Text" -ForegroundColor DarkGray
+        }
+
+        default {
+            Write-Host "[•] $Text" -ForegroundColor Cyan
+        }
+    }
+}
+
+# -----------------------------
+# BOYUT HESAPLAMA
+# -----------------------------
+
+function Get-ItemSizeBytes {
     param(
         [string]$Path
     )
 
     try {
 
-        if ((Get-Item $Path).PSIsContainer) {
+        if (Test-Path -LiteralPath $Path -PathType Leaf) {
 
-            $Size = (
-                Get-ChildItem `
-                    -Path $Path `
-                    -Recurse `
-                    -Force `
-                    -File `
-                    -ErrorAction SilentlyContinue |
-                Measure-Object -Property Length -Sum
-            ).Sum
-
-            if (-not $Size) {
-                return 0
-            }
-
-            return [int64]$Size
+            return (Get-Item -LiteralPath $Path -Force).Length
         }
 
-        return [int64](Get-Item $Path -Force).Length
+        if (Test-Path -LiteralPath $Path -PathType Container) {
 
-    }
-    catch {
+            $files = Get-ChildItem -LiteralPath $Path -Recurse -Force -File
 
-        return 0
-    }
+            $total = 0
+
+            foreach ($file in $files) {
+                $total += $file.Length
+            }
+
+            return $total
+        }
+
+    } catch {}
+
+    return 0
 }
+
+# -----------------------------
+# BOYUT FORMAT
+# -----------------------------
 
 function Format-Size {
     param(
-        [int64]$Bytes
+        [long]$Bytes
     )
 
     if ($Bytes -ge 1GB) {
@@ -153,462 +169,350 @@ function Format-Size {
     return "$Bytes B"
 }
 
-function Show-Progress {
-    param(
-        [int]$Current,
-        [int]$Total
-    )
+# -----------------------------
+# BAŞLANGIÇ
+# -----------------------------
 
-    if ($Total -le 0) {
-        return
+Write-Host ""
+Write-Center "╔══════════════════════════════════════════════╗" Magenta
+Write-Center "║                                              ║" Magenta
+Write-Center "║              REDX CLEANER FINAL              ║" Magenta
+Write-Center "║                  By LuxRest                  ║" Magenta
+Write-Center "║                                              ║" Magenta
+Write-Center "╚══════════════════════════════════════════════╝" Magenta
+Write-Host ""
+
+$startTime = Get-Date
+
+# -----------------------------
+# SİSTEM KONTROLÜ
+# -----------------------------
+
+Write-Host "────────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Center "SİSTEM KONTROLÜ" Cyan
+Write-Host "────────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Host ""
+
+Show-Loading "Sistem hazırlanıyor..." 1
+
+# -----------------------------
+# REDX KONTROL
+# -----------------------------
+
+$redxProcess = Get-Process -Name $processName -ErrorAction SilentlyContinue
+
+if ($redxProcess) {
+
+    Write-Status "RedX çalışıyor, kapatılıyor..." "INFO"
+
+    try {
+        Stop-Process -Name $processName -Force
+        Start-Sleep -Milliseconds 800
+
+        if (-not (Get-Process -Name $processName -ErrorAction SilentlyContinue)) {
+            Write-Status "RedX başarıyla kapatıldı" "OK"
+        }
+        else {
+            Write-Status "RedX kapatılamadı" "ERROR"
+        }
+
+    } catch {
+        Write-Status "RedX kapatılırken hata oluştu" "ERROR"
     }
 
-    $Percent = [int](($Current / $Total) * 100)
+}
+else {
 
-    $BarLength = 30
-    $Filled = [int](($Percent / 100) * $BarLength)
-
-    $Bar = ("█" * $Filled) + ("░" * ($BarLength - $Filled))
-
-    Write-Host "`r  [$Bar] $Percent%   " `
-        -NoNewline `
-        -ForegroundColor Cyan
+    Write-Status "RedX zaten çalışmıyor" "SKIP"
 }
 
-# ============================================================
-# HEADER
-# ============================================================
+# -----------------------------
+# STEAM KONTROL
+# -----------------------------
+
+$steamProcess = Get-Process -Name "steam" -ErrorAction SilentlyContinue
+
+if ($steamProcess) {
+
+    Write-Status "Steam çalışıyor, kapatılıyor..." "INFO"
+
+    try {
+
+        Stop-Process -Name "steam" -Force
+        Start-Sleep -Seconds 2
+
+        Write-Status "Steam kapatıldı" "OK"
+
+    } catch {
+
+        Write-Status "Steam kapatılırken hata oluştu" "ERROR"
+    }
+
+}
+else {
+
+    Write-Status "Steam zaten çalışmıyor" "SKIP"
+}
+
+# -----------------------------
+# STEAM YOLU
+# -----------------------------
 
 Write-Host ""
-
-Write-Center "╔══════════════════════════════════════════════════╗" Magenta
-Write-Center "║                                                  ║" Magenta
-Write-Center "║              REDX CLEANER v$Version              ║" Magenta
-Write-Center "║                                                  ║" Magenta
-Write-Center "║                    BY LUXREST                   ║" Cyan
-Write-Center "║                                                  ║" Magenta
-Write-Center "╚══════════════════════════════════════════════════╝" Magenta
-
+Write-Host "────────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Center "STEAM KONTROLÜ" Cyan
+Write-Host "────────────────────────────────────────────────" -ForegroundColor DarkGray
 Write-Host ""
 
-Loading "LuxRest Cleaner başlatılıyor..." 1
-
-# ============================================================
-# SİSTEM KONTROLÜ
-# ============================================================
-
-Write-Host ""
-Write-Host "  ───────────────────────────────────────────────" `
-    -ForegroundColor DarkMagenta
-
-Write-Center "SİSTEM KONTROLÜ" Cyan
-
-Write-Host "  ───────────────────────────────────────────────" `
-    -ForegroundColor DarkMagenta
-
-Write-Host ""
-
-Status "✓" "PowerShell ortamı hazır" Green
+$steamPath = $null
 
 try {
 
-    $WindowsVersion = [System.Environment]::OSVersion.Version
+    $steamPath = (Get-ItemProperty `
+        -Path "HKCU:\Software\Valve\Steam" `
+        -Name "SteamPath" `
+        -ErrorAction SilentlyContinue).SteamPath
 
-    Status "✓" "Windows tespit edildi ($WindowsVersion)" Green
+} catch {}
+
+if ([string]::IsNullOrWhiteSpace($steamPath)) {
+
+    Write-Status "Steam yolu kayıt defterinden bulunamadı" "ERROR"
 
 }
-catch {
+elseif (-not (Test-Path -LiteralPath $steamPath)) {
 
-    Status "!" "Windows sürümü alınamadı" Yellow
-}
-
-Status "✓" "Temizleme motoru hazır" Green
-
-Write-Host ""
-
-# ============================================================
-# REDX KONTROLÜ
-# ============================================================
-
-Status "•" "RedXGameLibrary kontrol ediliyor..." Cyan
-
-$RedxPath = $null
-
-$RedxProcess = Get-Process `
-    -Name $ProcessName `
-    -ErrorAction SilentlyContinue
-
-if ($RedxProcess) {
-
-    try {
-        $RedxPath = $RedxProcess.Path
-    }
-    catch {}
-
-    Status "✓" "RedXGameLibrary çalışıyor" Green
-
-    Loading "RedXGameLibrary kapatılıyor..." 1
-
-    Stop-Process `
-        -Name $ProcessName `
-        -Force `
-        -ErrorAction SilentlyContinue
-
-    Start-Sleep -Milliseconds 800
-
-    if (-not (Get-Process -Name $ProcessName -ErrorAction SilentlyContinue)) {
-
-        Status "✓" "RedXGameLibrary başarıyla kapatıldı" Green
-
-    }
-    else {
-
-        Status "!" "RedXGameLibrary kapatılamadı" Yellow
-    }
+    Write-Status "Steam klasörü bulunamadı" "ERROR"
 
 }
 else {
 
-    Status "-" "RedXGameLibrary çalışmıyor" Yellow
+    Write-Status "Steam bulundu" "OK"
+    Write-Host "      Yol: $steamPath" -ForegroundColor Gray
 }
 
-Write-Host ""
-
-# ============================================================
-# STEAM KONTROLÜ
-# ============================================================
-
-Status "•" "Steam kontrol ediliyor..." Cyan
-
-$SteamWasRunning = $false
-
-$SteamProcess = Get-Process `
-    -Name $SteamProcessName `
-    -ErrorAction SilentlyContinue
-
-if ($SteamProcess) {
-
-    $SteamWasRunning = $true
-
-    Status "✓" "Steam çalışıyor" Green
-
-    Loading "Steam kapatılıyor..." 2
-
-    Stop-Process `
-        -Name $SteamProcessName `
-        -Force `
-        -ErrorAction SilentlyContinue
-
-    Start-Sleep -Seconds 2
-
-    if (-not (Get-Process -Name $SteamProcessName -ErrorAction SilentlyContinue)) {
-
-        Status "✓" "Steam başarıyla kapatıldı" Green
-
-    }
-    else {
-
-        Status "!" "Steam tamamen kapatılamadı" Yellow
-    }
-
-}
-else {
-
-    Status "-" "Steam zaten çalışmıyor" Yellow
-}
-
-Write-Host ""
-
-# ============================================================
-# STEAM KLASÖRÜ
-# ============================================================
-
-Write-Host "  ───────────────────────────────────────────────" `
-    -ForegroundColor DarkMagenta
-
-Write-Center "STEAM KONUMU" Cyan
-
-Write-Host "  ───────────────────────────────────────────────" `
-    -ForegroundColor DarkMagenta
-
-Write-Host ""
-
-$RegistryPath = "HKCU:\Software\Valve\Steam"
-
-if (-not (Test-Path $RegistryPath)) {
-
-    Status "X" "Steam kayıt defteri konumu bulunamadı" Red
-
-    Write-Host ""
-    Write-Center "TEMİZLEME BAŞARISIZ" Red
-    Write-Host ""
-
-    Start-Sleep -Seconds 5
-    exit
-}
-
-$SteamRegistry = Get-ItemProperty `
-    -Path $RegistryPath `
-    -ErrorAction SilentlyContinue
-
-$SteamPath = $SteamRegistry.SteamPath
-$SteamExe = $SteamRegistry.SteamExe
-
-if (-not $SteamPath) {
-
-    Status "X" "Steam kurulum yolu bulunamadı" Red
-
-    Write-Host ""
-    Write-Center "TEMİZLEME BAŞARISIZ" Red
-    Write-Host ""
-
-    Start-Sleep -Seconds 5
-    exit
-}
-
-$SteamPath = $SteamPath -replace '/', '\'
-
-if (-not (Test-Path $SteamPath)) {
-
-    Status "X" "Steam klasörü mevcut değil" Red
-
-    Write-Host ""
-    Write-Host "  $SteamPath" -ForegroundColor DarkGray
-    Write-Host ""
-
-    Start-Sleep -Seconds 5
-    exit
-}
-
-Status "✓" "Steam klasörü bulundu" Green
-
-Write-Host ""
-Write-Host "  Konum:" -ForegroundColor DarkGray
-Write-Host "  $SteamPath" -ForegroundColor Gray
-
-Write-Host ""
-
-# ============================================================
+# -----------------------------
 # TEMİZLEME
-# ============================================================
-
-Write-Host "  ───────────────────────────────────────────────" `
-    -ForegroundColor DarkMagenta
-
-Write-Center "TEMİZLEME BAŞLIYOR" Cyan
-
-Write-Host "  ───────────────────────────────────────────────" `
-    -ForegroundColor DarkMagenta
+# -----------------------------
 
 Write-Host ""
+Write-Host "────────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Center "TEMİZLEME İŞLEMİ" Cyan
+Write-Host "────────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Host ""
 
-$DeletedCount = 0
-$NotFoundCount = 0
-$FailedCount = 0
-$TotalCleanedBytes = [int64]0
-$Current = 0
-$Total = $Targets.Count
+$deletedCount = 0
+$notFoundCount = 0
+$failedCount = 0
+$totalCleaned = [long]0
 
-foreach ($Target in $Targets) {
+if (-not $steamPath -or -not (Test-Path -LiteralPath $steamPath)) {
 
-    $Current++
+    Write-Status "Geçerli Steam klasörü bulunamadığı için işlem iptal edildi" "ERROR"
 
-    Show-Progress `
-        -Current ($Current - 1) `
-        -Total $Total
+}
+else {
 
-    Write-Host ""
+    $index = 0
+    $totalTargets = $targets.Count
 
-    $FullPath = Join-Path $SteamPath $Target
+    foreach ($target in $targets) {
 
-    if (Test-Path $FullPath) {
+        $index++
 
-        $Size = Get-ItemSize -Path $FullPath
-        $ReadableSize = Format-Size -Bytes $Size
+        $fullPath = Join-Path $steamPath $target
 
-        Write-Host "  ┌─ " -NoNewline -ForegroundColor DarkGray
-        Write-Host "$Target" -ForegroundColor Yellow
-        Write-Host "  │  Boyut: $ReadableSize" -ForegroundColor DarkGray
-        Write-Host "  │  İşlem: SİLİNİYOR..." -ForegroundColor Yellow
+        Write-Host "[$index/$totalTargets] $target" -ForegroundColor White
+
+        # -------------------------
+        # KONTROL
+        # -------------------------
+
+        if (-not (Test-Path -LiteralPath $fullPath)) {
+
+            Write-Host "      → Bulunamadı" -ForegroundColor DarkGray
+
+            $notFoundCount++
+
+            Write-Host ""
+            continue
+        }
+
+        # -------------------------
+        # BOYUT
+        # -------------------------
+
+        $sizeBytes = Get-ItemSizeBytes -Path $fullPath
+        $sizeText = Format-Size -Bytes $sizeBytes
+
+        Write-Host "      Boyut : $sizeText" -ForegroundColor Gray
+        Write-Host "      İşlem : SİLİNİYOR..." -ForegroundColor Yellow
+
+        # -------------------------
+        # SİLME
+        # -------------------------
 
         try {
 
             Remove-Item `
-                -Path $FullPath `
+                -LiteralPath $fullPath `
                 -Recurse `
                 -Force `
                 -ErrorAction Stop
 
-            Start-Sleep -Milliseconds 250
+            Start-Sleep -Milliseconds 300
 
-            if (-not (Test-Path $FullPath)) {
+            # ---------------------
+            # DOĞRULAMA
+            # ---------------------
 
-                $DeletedCount++
-                $TotalCleanedBytes += $Size
+            if (-not (Test-Path -LiteralPath $fullPath)) {
 
-                Write-Host "  └─ [✓] Başarıyla silindi" `
-                    -ForegroundColor Green
+                Write-Host "      ✓ Başarıyla silindi" -ForegroundColor Green
+
+                $deletedCount++
+                $totalCleaned += $sizeBytes
+
             }
             else {
 
-                $FailedCount++
+                Write-Host "      ✗ Silme doğrulanamadı" -ForegroundColor Red
 
-                Write-Host "  └─ [X] Silinemedi" `
-                    -ForegroundColor Red
+                $failedCount++
             }
 
         }
         catch {
 
-            $FailedCount++
+            Write-Host "      ✗ Silme işlemi başarısız" -ForegroundColor Red
 
-            Write-Host "  └─ [X] Silme hatası" `
-                -ForegroundColor Red
+            $failedCount++
+        }
+
+        Write-Host ""
+    }
+}
+
+# -----------------------------
+# STEAM BAŞLAT
+# -----------------------------
+
+Write-Host "────────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Center "PROGRAMLAR YENİDEN BAŞLATILIYOR" Cyan
+Write-Host "────────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Host ""
+
+$steamExe = $null
+
+$possibleSteamPaths = @(
+    $steamPath,
+    "C:\Program Files (x86)\Steam",
+    "C:\Program Files\Steam"
+)
+
+foreach ($path in $possibleSteamPaths) {
+
+    if ($path) {
+
+        $candidate = Join-Path $path "steam.exe"
+
+        if (Test-Path -LiteralPath $candidate) {
+
+            $steamExe = $candidate
+            break
+        }
+    }
+}
+
+if ($steamExe) {
+
+    try {
+
+        Start-Process -FilePath $steamExe
+
+        Write-Status "Steam yeniden başlatıldı" "OK"
+
+    }
+    catch {
+
+        Write-Status "Steam başlatılamadı" "ERROR"
+    }
+
+}
+else {
+
+    Write-Status "Steam.exe bulunamadı" "WARN"
+}
+
+# -----------------------------
+# REDX BAŞLAT
+# -----------------------------
+
+Start-Sleep -Seconds 2
+
+if (-not [string]::IsNullOrWhiteSpace($redxPath)) {
+
+    if (Test-Path -LiteralPath $redxPath) {
+
+        try {
+
+            Start-Process -FilePath $redxPath
+
+            Write-Status "RedX yeniden başlatıldı" "OK"
+
+        }
+        catch {
+
+            Write-Status "RedX başlatılamadı" "ERROR"
         }
 
     }
     else {
 
-        $NotFoundCount++
-
-        Write-Host "  [SKIP] " -NoNewline -ForegroundColor DarkGray
-        Write-Host "$Target bulunamadı" -ForegroundColor DarkGray
-    }
-
-    Write-Host ""
-
-    Show-Progress `
-        -Current $Current `
-        -Total $Total
-
-    Write-Host ""
-
-    Start-Sleep -Milliseconds 300
-}
-
-# ============================================================
-# TEMİZLEME SONRASI
-# ============================================================
-
-Write-Host ""
-Write-Host "  ───────────────────────────────────────────────" `
-    -ForegroundColor DarkMagenta
-
-Loading "Temizleme sonuçları hazırlanıyor..." 1
-
-# ============================================================
-# STEAM BAŞLAT
-# ============================================================
-
-Write-Host ""
-
-if ($SteamExe -and (Test-Path $SteamExe)) {
-
-    Loading "Steam yeniden başlatılıyor..." 2
-
-    try {
-
-        Start-Process `
-            -FilePath $SteamExe `
-            -ErrorAction Stop
-
-        Status "✓" "Steam yeniden başlatıldı" Green
-
-    }
-    catch {
-
-        Status "X" "Steam başlatılamadı" Red
+        Write-Status "RedX yolu bulunamadı" "WARN"
     }
 
 }
 else {
 
-    Status "!" "Steam.exe bulunamadı" Yellow
+    Write-Status "RedX otomatik başlatma yolu tanımlı değil" "SKIP"
 }
 
-# ============================================================
-# REDX BAŞLAT
-# ============================================================
-
-Write-Host ""
-
-if ($RedxPath -and (Test-Path $RedxPath)) {
-
-    Loading "RedXGameLibrary yeniden başlatılıyor..." 2
-
-    try {
-
-        Start-Process `
-            -FilePath $RedxPath `
-            -ErrorAction Stop
-
-        Status "✓" "RedXGameLibrary yeniden başlatıldı" Green
-
-    }
-    catch {
-
-        Status "X" "RedXGameLibrary başlatılamadı" Red
-    }
-
-}
-else {
-
-    Status "-" "RedXGameLibrary çalıştırılabilir yolu bulunamadı" Yellow
-}
-
-# ============================================================
-# SÜRE
-# ============================================================
-
-$EndTime = Get-Date
-$Duration = $EndTime - $StartTime
-
-$DurationText = "{0:00} dk {1:00} sn" `
-    -f [int]$Duration.TotalMinutes, $Duration.Seconds
-
-$CleanedText = Format-Size -Bytes $TotalCleanedBytes
-
-# ============================================================
+# -----------------------------
 # SONUÇ
-# ============================================================
+# -----------------------------
+
+$endTime = Get-Date
+$elapsed = $endTime - $startTime
 
 Write-Host ""
+Write-Host "════════════════════════════════════════════════" -ForegroundColor Magenta
+Write-Center "TEMİZLEME SONUCU" Magenta
+Write-Host "════════════════════════════════════════════════" -ForegroundColor Magenta
 Write-Host ""
 
-Write-Center "╔══════════════════════════════════════════════════╗" Magenta
-Write-Center "║                                                  ║" Magenta
-Write-Center "║               TEMİZLEME TAMAMLANDI              ║" Magenta
-Write-Center "║                                                  ║" Magenta
-Write-Center "╠══════════════════════════════════════════════════╣" Magenta
-Write-Center "║                                                  ║" Magenta
-
-Write-Center "║   Silinen öğe       : $DeletedCount" Green
-Write-Center "║   Bulunamayan       : $NotFoundCount" Yellow
-Write-Center "║   Başarısız         : $FailedCount" Red
-Write-Center "║   Temizlenen alan   : $CleanedText" Cyan
-Write-Center "║   İşlem süresi      : $DurationText" Cyan
-
-Write-Center "║                                                  ║" Magenta
-Write-Center "╚══════════════════════════════════════════════════╝" Magenta
+Write-Host "  ✓ Silinen        : $deletedCount" -ForegroundColor Green
+Write-Host "  → Bulunamayan    : $notFoundCount" -ForegroundColor DarkGray
+Write-Host "  ✗ Hatalı         : $failedCount" -ForegroundColor Red
+Write-Host "  ★ Temizlenen     : $(Format-Size $totalCleaned)" -ForegroundColor Cyan
+Write-Host "  ⏱ İşlem süresi   : $($elapsed.Minutes) dk $($elapsed.Seconds) sn" -ForegroundColor Gray
 
 Write-Host ""
+Write-Host "════════════════════════════════════════════════" -ForegroundColor Magenta
 
-if ($FailedCount -eq 0) {
+if ($failedCount -eq 0) {
 
-    Write-Center "✓ İşlem başarıyla tamamlandı." Green
+    Write-Center "✓ TEMİZLEME BAŞARIYLA TAMAMLANDI" Green
 
 }
 else {
 
-    Write-Center "! İşlem tamamlandı ancak bazı işlemler başarısız oldu." Yellow
+    Write-Center "! TEMİZLEME TAMAMLANDI, BAZI İŞLEMLER BAŞARISIZ" Yellow
 }
 
+Write-Host "════════════════════════════════════════════════" -ForegroundColor Magenta
 Write-Host ""
 
-Write-Center "REDX CLEANER v$Version" Cyan
-Write-Center "BY LUXREST" Magenta
-
-Write-Host ""
-Write-Center "Pencere 5 saniye içinde kapanacak..." DarkGray
+Write-Center "REDX CLEANER | By LuxRest" DarkGray
 
 Start-Sleep -Seconds 5
