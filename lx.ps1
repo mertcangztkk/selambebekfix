@@ -1,26 +1,33 @@
-$processName = "RedXGameLibrary"
-$redxPath = ""
+# ============================================
+#              REDX CLEANER v1.0
+#                  By LuxRest
+# ============================================
 
-# ==============================
-#       BY LUXREST
-#    REDX CLEANER v1.0
-# ==============================
+$ErrorActionPreference = "SilentlyContinue"
 
-$Host.UI.RawUI.WindowTitle = "RedX Cleaner | By LuxRest"
+# ---------- UI ----------
+$Host.UI.RawUI.WindowTitle = "REDX CLEANER | By LuxRest"
 
 Clear-Host
 
 function Write-Center {
-    param([string]$Text, [ConsoleColor]$Color = "White")
+    param(
+        [string]$Text,
+        [ConsoleColor]$Color = "White"
+    )
 
-    $width = $Host.UI.RawUI.WindowSize.Width
-    $left = [Math]::Max(0, [Math]::Floor(($width - $Text.Length) / 2))
+    try {
+        $width = $Host.UI.RawUI.WindowSize.Width
+        $left = [Math]::Max(0, [int](($width - $Text.Length) / 2))
+    }
+    catch {
+        $left = 2
+    }
 
-    Write-Host (" " * $left) -NoNewline
-    Write-Host $Text -ForegroundColor $Color
+    Write-Host ((" " * $left) + $Text) -ForegroundColor $Color
 }
 
-function Show-Loading {
+function Loading {
     param(
         [string]$Text,
         [int]$Seconds = 1
@@ -31,107 +38,101 @@ function Show-Loading {
     $i = 0
 
     while ((Get-Date) -lt $end) {
-        Write-Host "`r  [ $($chars[$i % $chars.Count]) ] $Text" -NoNewline -ForegroundColor Cyan
+        Write-Host "`r  [$($chars[$i % $chars.Count])] $Text   " -NoNewline -ForegroundColor Cyan
         Start-Sleep -Milliseconds 120
         $i++
     }
 
-    Write-Host "`r  [ ✓ ] $Text" -ForegroundColor Green
+    Write-Host "`r  [✓] $Text                     " -ForegroundColor Green
 }
 
-function Write-Status {
+function Status {
     param(
-        [string]$Status,
+        [string]$Symbol,
         [string]$Text,
-        [ConsoleColor]$Color
+        [ConsoleColor]$Color = "White"
     )
 
-    Write-Host "  [$Status] " -NoNewline -ForegroundColor $Color
+    Write-Host "  [$Symbol] " -NoNewline -ForegroundColor $Color
     Write-Host $Text
 }
 
-# ==============================
-# HEADER
-# ==============================
+# ---------- HEADER ----------
 
 Write-Host ""
 Write-Center "╔══════════════════════════════════════════════╗" Magenta
 Write-Center "║                                              ║" Magenta
-Write-Center "║              REDX CLEANER v1.0               ║" Magenta
-Write-Center "║                 By LuxRest                   ║" Cyan
+Write-Center "║              REDX CLEANER v1.0              ║" Magenta
+Write-Center "║                 By LuxRest                  ║" Cyan
 Write-Center "║                                              ║" Magenta
 Write-Center "╚══════════════════════════════════════════════╝" Magenta
 Write-Host ""
 
-Show-Loading "Initializing RedX Cleaner..." 1
+Loading "Initializing..." 1
 
-# ==============================
-# REDX PROCESS
-# ==============================
+# ---------- REDX ----------
+
+$processName = "RedXGameLibrary"
+$redxPath = $null
 
 $redxProcess = Get-Process -Name $processName -ErrorAction SilentlyContinue
 
 if ($redxProcess) {
 
-    $redxPath = $redxProcess.Path
+    try {
+        $redxPath = $redxProcess.Path
+    } catch {}
 
-    Write-Status "✓" "RedXGameLibrary detected" Green
+    Status "✓" "RedXGameLibrary detected" Green
 
-    Show-Loading "Stopping RedXGameLibrary..." 1
+    Loading "Stopping RedXGameLibrary..." 1
 
     Stop-Process -Name $processName -Force -ErrorAction SilentlyContinue
 
-    Write-Status "✓" "RedXGameLibrary stopped" Green
-
+    Status "✓" "RedXGameLibrary stopped" Green
 }
 else {
-
-    Write-Status "-" "RedXGameLibrary is not running" Yellow
+    Status "-" "RedXGameLibrary is not running" Yellow
 }
 
 Write-Host ""
 
-# ==============================
-# STEAM PROCESS
-# ==============================
+# ---------- STEAM ----------
 
 $steamProcess = Get-Process -Name "steam" -ErrorAction SilentlyContinue
 
 if ($steamProcess) {
 
-    Write-Status "✓" "Steam process detected" Green
+    Status "✓" "Steam detected" Green
 
-    Show-Loading "Stopping Steam..." 2
+    Loading "Stopping Steam..." 2
 
     Stop-Process -Name "steam" -Force -ErrorAction SilentlyContinue
 
     Start-Sleep -Seconds 3
 
-    Write-Status "✓" "Steam stopped successfully" Green
+    Status "✓" "Steam stopped" Green
 }
 else {
-
-    Write-Status "-" "Steam is not running" Yellow
+    Status "-" "Steam is not running" Yellow
 }
 
 Write-Host ""
 
-# ==============================
-# STEAM REGISTRY
-# ==============================
+# ---------- STEAM PATH ----------
 
 $registryPath = "HKCU:\Software\Valve\Steam"
 
 if (-not (Test-Path $registryPath)) {
 
-    Write-Status "X" "Steam registry path not found" Red
+    Status "X" "Steam registry entry not found" Red
 
     Write-Host ""
-    Write-Center "Cleanup could not continue." Red
+    Write-Center "CLEANUP FAILED" Red
     Write-Host ""
 
-    Pause
-    Exit
+    Start-Sleep -Seconds 3
+    exit
 }
 
 $steamRegistry = Get-ItemProperty -Path $registryPath
@@ -141,22 +142,19 @@ $steamExe = $steamRegistry.SteamExe
 
 if (-not $steamPath) {
 
-    Write-Status "X" "Steam installation path not found" Red
+    Status "X" "Steam installation path not found" Red
 
-    Pause
-    Exit
+    Start-Sleep -Seconds 3
+    exit
 }
 
 $steamPath = $steamPath -replace '/', '\'
 
-Write-Host ""
 Write-Host "  Steam Directory:" -ForegroundColor DarkGray
 Write-Host "  $steamPath" -ForegroundColor Gray
 Write-Host ""
 
-# ==============================
-# CLEANUP
-# ==============================
+# ---------- CLEANUP ----------
 
 $targets = @(
     "xinput1_4.dll",
@@ -181,23 +179,36 @@ foreach ($target in $targets) {
 
     if (Test-Path $fullPath) {
 
-        Write-Host "  [ DELETE ] " -NoNewline -ForegroundColor Yellow
+        Write-Host "  [DELETE] " -NoNewline -ForegroundColor Yellow
         Write-Host $target
 
         try {
 
-            Remove-Item -Path $fullPath -Recurse -Force -ErrorAction Stop
+            Remove-Item `
+                -Path $fullPath `
+                -Recurse `
+                -Force `
+                -ErrorAction Stop
 
-            Write-Host "  [   ✓   ] " -NoNewline -ForegroundColor Green
-            Write-Host "$target deleted successfully" -ForegroundColor Green
+            if (-not (Test-Path $fullPath)) {
 
-            $deleted++
+                Write-Host "  [  ✓  ] " -NoNewline -ForegroundColor Green
+                Write-Host "$target deleted"
 
+                $deleted++
+            }
+            else {
+
+                Write-Host "  [  X  ] " -NoNewline -ForegroundColor Red
+                Write-Host "$target could not be deleted"
+
+                $failed++
+            }
         }
         catch {
 
-            Write-Host "  [   X   ] " -NoNewline -ForegroundColor Red
-            Write-Host "Failed to delete $target" -ForegroundColor Red
+            Write-Host "  [  X  ] " -NoNewline -ForegroundColor Red
+            Write-Host "Failed: $target"
 
             $failed++
         }
@@ -206,17 +217,15 @@ foreach ($target in $targets) {
     else {
 
         Write-Host "  [ SKIP ] " -NoNewline -ForegroundColor DarkGray
-        Write-Host "$target not found" -ForegroundColor DarkGray
+        Write-Host "$target not found"
 
         $notFound++
     }
 
-    Start-Sleep -Milliseconds 300
+    Start-Sleep -Milliseconds 250
 }
 
-# ==============================
-# START STEAM
-# ==============================
+# ---------- START STEAM ----------
 
 Write-Host ""
 Write-Host "  ═══════════════════════════════════════════" -ForegroundColor DarkMagenta
@@ -224,53 +233,50 @@ Write-Host ""
 
 if ($steamExe -and (Test-Path $steamExe)) {
 
-    Show-Loading "Starting Steam..." 2
+    Loading "Starting Steam..." 2
 
     Start-Process -FilePath $steamExe
 
-    Write-Status "✓" "Steam started successfully" Green
+    Status "✓" "Steam started" Green
 }
 else {
 
-    Write-Status "!" "Steam executable could not be found" Yellow
+    Status "!" "Steam executable not found" Yellow
 }
 
-# ==============================
-# START REDX
-# ==============================
+# ---------- START REDX ----------
 
 if ($redxPath -and (Test-Path $redxPath)) {
 
     Start-Sleep -Seconds 1
 
-    Show-Loading "Starting RedXGameLibrary..." 2
+    Loading "Starting RedXGameLibrary..." 2
 
     Start-Process -FilePath $redxPath
 
-    Write-Status "✓" "RedXGameLibrary started successfully" Green
+    Status "✓" "RedXGameLibrary started" Green
 }
 else {
 
-    Write-Status "-" "RedXGameLibrary executable path unavailable" Yellow
+    Status "-" "RedX executable path unavailable" Yellow
 }
 
-# ==============================
-# SUMMARY
-# ==============================
+# ---------- RESULT ----------
 
 Write-Host ""
 Write-Host "  ╔══════════════════════════════════════════╗" -ForegroundColor Magenta
-Write-Host "  ║              CLEANUP COMPLETE             ║" -ForegroundColor Magenta
+Write-Host "  ║              CLEANUP COMPLETE            ║" -ForegroundColor Magenta
 Write-Host "  ╠══════════════════════════════════════════╣" -ForegroundColor Magenta
-Write-Host "  ║  Deleted  : $deleted" -ForegroundColor Green
-Write-Host "  ║  Not Found: $notFound" -ForegroundColor Yellow
-Write-Host "  ║  Failed   : $failed" -ForegroundColor Red
+Write-Host "  ║  Deleted   : $deleted" -ForegroundColor Green
+Write-Host "  ║  Not Found : $notFound" -ForegroundColor Yellow
+Write-Host "  ║  Failed    : $failed" -ForegroundColor Red
 Write-Host "  ╚══════════════════════════════════════════╝" -ForegroundColor Magenta
 Write-Host ""
 
 Write-Center "REDX CLEANER | By LuxRest" Cyan
-Write-Center "Thank you for using LuxRest tools." DarkGray
+Write-Center "Operation completed successfully." DarkGray
 
 Write-Host ""
-Write-Host "  Press any key to exit..." -ForegroundColor DarkGray
-$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+Write-Host "  Closing in 5 seconds..." -ForegroundColor DarkGray
+
+Start-Sleep -Seconds 5
